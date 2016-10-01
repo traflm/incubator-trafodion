@@ -297,6 +297,9 @@ CoprocessorService, Coprocessor {
   private AtomicLong nextSsccSequenceId;
 
   private IdTm idServer;
+
+  private Boolean disableChecking = false;
+
   private static final int ID_TM_SERVER_TIMEOUT = 1000;
   // SsccRegionService methods
   @Override
@@ -1274,7 +1277,7 @@ CoprocessorService, Coprocessor {
                 if(firstCell == false) {
 
                     //long thisTs = c.getTimestamp();
-                    if (state.handleResult(c,statusResult.listCells(),verResult.listCells(),colResult.listCells(),transId) == true)
+                    if (state.handleResult(c,statusResult.listCells(),verResult.listCells(),colResult.listCells(),transId) == true  || disableChecking == true)
                     {
                         byte[] keyt=CellUtil.cloneQualifier(c);
                         String keys = new String(keyt);
@@ -1788,7 +1791,7 @@ CoprocessorService, Coprocessor {
               long thisTs = kv.getTimestamp();
               //find out the startId for thisTs
               //long kvStartId = getStartIdFromTs(thisTs);
-              if (state.handleResult(kv,sl,vl,cl,transactionId) == true)
+              if (state.handleResult(kv,sl,vl,cl,transactionId) == true || disableChecking == true)
               {
                   byte[] keyt=CellUtil.cloneQualifier(kv);
                   String keys = new String(keyt);
@@ -3763,7 +3766,7 @@ CoprocessorService, Coprocessor {
 
                  temp = ci.getValue(colFamily, qualifier, c);
                  if (temp != null) {
-                    if (state.handleResult(c,statusResult.listCells(),verResult.listCells(),colResult.listCells(),transactionId) == true) {
+                    if (state.handleResult(c,statusResult.listCells(),verResult.listCells(),colResult.listCells(),transactionId) == true || disableChecking == true ) {
                        if (LOG.isTraceEnabled()) LOG.trace("SsccRegionEndpoint coprocessor: getSum adding cell: " + c.getRow());
                        sumVal = ci.add(sumVal, ci.castToReturnType(temp));
                        break;
@@ -3858,7 +3861,7 @@ CoprocessorService, Coprocessor {
               }
 
               if(firstCell == false) {
-                 if (state.handleResult(c,statusResult.listCells(),verResult.listCells(),colResult.listCells(),transactionId) == true) {
+                 if (state.handleResult(c,statusResult.listCells(),verResult.listCells(),colResult.listCells(),transactionId) == true || disableChecking == true) {
                     if (LOG.isTraceEnabled()) LOG.trace("SsccRegionEndpoint coprocessor: getRowNum adding cell: " + c.getRow());
                     counter++;
                     break;
@@ -4259,6 +4262,12 @@ CoprocessorService, Coprocessor {
     long ssccSeqId = currentTime > logSeqId ? currentTime : logSeqId;
     nextSsccSequenceId = new AtomicLong(ssccSeqId);
     LOG.info("Generate SequenceID start from " + nextSsccSequenceId);
+
+    //check region name
+    String regionNameToCheck=this.regionInfo.getRegionNameAsString();
+    if( regionNameToCheck.startsWith("TRAFODION._MD_.") == true )
+      disableChecking = true;
+        
 
     LOG.info("SsccRegionEndpoint coprocessor: start");
   }
