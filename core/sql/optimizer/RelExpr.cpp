@@ -347,6 +347,8 @@ Int32 RelExpr::getArity() const
     case REL_LEFT_TSJ:
     case REL_NESTED_JOIN:
     case REL_MERGE_JOIN:
+    case REL_INTERSECT:
+    case REL_EXCEPT:
       return 2;
 
     default:
@@ -3807,6 +3809,8 @@ NABoolean RelExpr::isAnyJoin() const
     case REL_FORCE_ORDERED_HASH_JOIN:
     case REL_FORCE_HYBRID_HASH_JOIN:
     case REL_FORCE_MERGE_JOIN:
+    case REL_INTERSECT:
+    case REL_EXCEPT:
       return TRUE;
 
     default:
@@ -5142,6 +5146,39 @@ NABoolean Join::duplicateMatch(const RelExpr & other) const
     return FALSE;
 
   return TRUE;
+}
+
+ 
+RelExpr * Intersect::copyTopNode(RelExpr *derivedNode, CollHeap* outHeap)
+{
+  RelExpr *result;
+
+  if (derivedNode == NULL)
+    {
+      result = new (outHeap) Intersect(NULL,
+                                        NULL
+                                        );
+    }
+  else
+    result = derivedNode;
+
+  return RelExpr::copyTopNode(result, outHeap);
+}
+
+RelExpr * Except::copyTopNode(RelExpr *derivedNode, CollHeap* outHeap)
+{
+  RelExpr *result;
+
+  if (derivedNode == NULL)
+    {
+      result = new (outHeap) Except(NULL,
+                                        NULL
+                                        );
+    }
+  else
+    result = derivedNode;
+
+  return RelExpr::copyTopNode(result, outHeap);
 }
 
 RelExpr * Join::copyTopNode(RelExpr *derivedNode, CollHeap* outHeap)
@@ -6670,8 +6707,10 @@ Union::Union(RelExpr *leftChild,
   ,rightList_(NULL)
   ,currentChild_(-1)
   ,alternateRightChildOrderExprTree_(NULL) //++MV
-  ,isSystemGenerated_(sysGenerated),
-  isSerialUnion_(FALSE)
+  ,isSystemGenerated_(sysGenerated)
+  ,isSerialUnion_(FALSE)
+  ,variablesSet_(oHeap)
+  
 {
   if ( NOT mayBeCacheable )
     setNonCacheable();
@@ -7523,6 +7562,7 @@ RelExpr * GroupByAgg::copyTopNode(RelExpr *derivedNode, CollHeap* outHeap)
     result->aggregateExprTree_ = aggregateExprTree_->copyTree(outHeap);
 
   result->groupExpr_     = groupExpr_;
+  result->rollupGroupExprList_ = rollupGroupExprList_;
   result->aggregateExpr_ = aggregateExpr_;
   result->formEnum_      = formEnum_;
   result->gbAggPushedBelowTSJ_ = gbAggPushedBelowTSJ_;
@@ -7535,6 +7575,8 @@ RelExpr * GroupByAgg::copyTopNode(RelExpr *derivedNode, CollHeap* outHeap)
 
   result->selIndexInHaving_ = selIndexInHaving_;
   result->aggrExprsToBeDeleted_ = aggrExprsToBeDeleted_;
+
+  result->isRollup_ = isRollup_;
 
   return RelExpr::copyTopNode(result, outHeap);
 }
@@ -7672,6 +7714,8 @@ void GroupByAgg::addLocalExpr(LIST(ExprNode *) &xlist,
     {
       if (groupExpr_.isEmpty())
 	xlist.insert(groupExprTree_);
+      else if (isRollup() && (NOT rollupGroupExprList_.isEmpty()))
+ 	xlist.insert(rollupGroupExprList_.rebuildExprTree(ITM_ITEM_LIST));
       else
 	xlist.insert(groupExpr_.rebuildExprTree(ITM_ITEM_LIST));
       llist.insert("grouping_columns");
@@ -7827,7 +7871,10 @@ NABoolean SortGroupBy::isPhysical() const {return TRUE;}
 
 const NAString SortGroupBy::getText() const
 {
-  return "sort_" + GroupByAgg::getText();
+  if (isRollup())
+    return "sort_" + GroupByAgg::getText() + "_rollup";
+  else
+    return "sort_" + GroupByAgg::getText();
 }
 
 RelExpr * SortGroupBy::copyTopNode(RelExpr *derivedNode, CollHeap* outHeap)
@@ -10023,10 +10070,12 @@ HbaseAccess::HbaseAccess(CorrName &corrName,
 			 OperatorTypeEnum otype,
 			 CollHeap *oHeap)
   : FileScan(corrName, NULL, NULL, otype, oHeap),
-    listOfSearchKeys_(oHeap)
+    listOfSearchKeys_(oHeap),
+    snpType_(SNP_NONE),
+    retHbaseColRefSet_(oHeap),
+    opList_(oHeap)
 {
   accessType_ = SELECT_;
-  
   uniqueHbaseOper_ = FALSE;
   uniqueRowsetHbaseOper_ = FALSE;
 }
@@ -10050,11 +10099,12 @@ HbaseAccess::HbaseAccess(CorrName &corrName,
              generatedCCPreds,
              otype),
     listOfSearchKeys_(oHeap),
-    snpType_(SNP_NONE)
+    snpType_(SNP_NONE),
+    retHbaseColRefSet_(oHeap),
+    opList_(oHeap)
 {
   accessType_ = SELECT_;
   //setTableDesc(tableDesc);
-
   uniqueHbaseOper_ = FALSE;
   uniqueRowsetHbaseOper_ = FALSE;
 }
@@ -10066,10 +10116,11 @@ HbaseAccess::HbaseAccess(CorrName &corrName,
     isRW_(isRW),
     isCW_(isCW),
     listOfSearchKeys_(oHeap),
-    snpType_(SNP_NONE)
+    snpType_(SNP_NONE),
+    retHbaseColRefSet_(oHeap),
+    opList_(oHeap)
 {
   accessType_ = SELECT_;
-
   uniqueHbaseOper_ = FALSE;
   uniqueRowsetHbaseOper_ = FALSE;
 }
@@ -10078,10 +10129,11 @@ HbaseAccess::HbaseAccess( OperatorTypeEnum otype,
 			  CollHeap *oHeap)
   : FileScan(CorrName(), NULL, NULL, otype, oHeap),
     listOfSearchKeys_(oHeap),
-    snpType_(SNP_NONE)
+    snpType_(SNP_NONE),
+    retHbaseColRefSet_(oHeap),
+    opList_(oHeap)
 {
   accessType_ = SELECT_;
-
   uniqueHbaseOper_ = FALSE;
   uniqueRowsetHbaseOper_ = FALSE;
 }
@@ -11960,6 +12012,14 @@ void MapValueIds::getPotentialOutputValues(ValueIdSet & outputValues) const
   //
   outputValues.insertList((getMap2()).getTopValues());
 } // MapValueIds::getPotentialOutputValues()
+
+void MapValueIds::addSameMapEntries(const ValueIdSet & newTopBottomValues)
+{
+  for (ValueId x = newTopBottomValues.init();
+	    newTopBottomValues.next(x);
+	    newTopBottomValues.advance(x))
+    addMapEntry(x,x);
+}
 
 void MapValueIds::addLocalExpr(LIST(ExprNode *) &xlist,
 			       LIST(NAString) &llist) const
@@ -15305,7 +15365,7 @@ NABoolean Join::childNodeContainMultiColumnSkew(
    // A list of valueIdSets, each valueIdSet element contains a set of 
    // columns from the join predicates. Each set has all columns from the
    // same table participating in the join predicates.
-   ARRAY(ValueIdSet) mcArray(joinPreds.entries());
+   ARRAY(ValueIdSet) mcArray(CmpCommon::statementHeap(), joinPreds.entries());
 
    Int32 skews = 0, leastSkewList = 0;
    EncodedValue mostFreqVal;
