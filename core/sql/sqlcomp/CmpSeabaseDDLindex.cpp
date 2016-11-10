@@ -972,7 +972,7 @@ void CmpSeabaseDDL::createSeabaseIndex( StmtDDLCreateIndex * createIndexNode,
         (CmpCommon::getDefault(TRAF_LOAD_USE_FOR_INDEXES) == DF_ON);
 
       NABoolean indexOpt = 
-        (CmpCommon::getDefault(TRAF_INDEX_CREATE_OPT) == DF_ON);
+        (CmpCommon::getDefault(TRAF_INDEX_CREATE_OPT) == DF_ON  && CmpCommon::getDefault(TRAF_TRANS_TYPE) != DF_SSCC );
 
       if (indexOpt)
         {

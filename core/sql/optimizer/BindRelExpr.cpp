@@ -4983,6 +4983,7 @@ RelExpr *RelRoot::bindNode(BindWA *bindWA)
       //  (of the form:  select count(*), sum(a) from t; )
       // then transform it so it could be evaluated using hbase co-processor.
       if ((CmpCommon::getDefault(HBASE_COPROCESSORS) == DF_ON) &&
+          (CmpCommon::getDefault(TRAF_TRANS_TYPE) != DF_SSCC ) &&
 	  (child(0) && child(0)->getOperatorType() == REL_SCAN))
 	{
           Scan * scan = (Scan*)child(0)->castToRelExpr();

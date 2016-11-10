@@ -1394,6 +1394,7 @@ short CmpSeabaseDDL::updateIndexInfo(
                   getSystemCatalog(), SEABASE_MD_SCHEMA, SEABASE_OBJECTS,
                   catName, schemaNamePart.data(), objectNamePart.data());
      cliRC = cliInterface->executeImmediate(buf);
+printf("Try to [%s] with %d\n",buf, cliRC);
       if (cliRC < 0)
         {
           cliInterface->retrieveSQLDiagnostics(CmpCommon::diags());

@@ -223,7 +223,7 @@ public class SsccTransactionState extends TransactionState{
          not visible.
 
     */
-    public boolean handleResult(Cell inputCell,List<Cell> statusList,List<Cell> versionList,List<Cell> colList, long gTransId) 
+    public int handleResult(Cell inputCell,List<Cell> statusList,List<Cell> versionList,List<Cell> colList, long gTransId) 
     {
         byte[] status = null;
         byte[] version = null;
@@ -241,24 +241,24 @@ public class SsccTransactionState extends TransactionState{
         matcher = byteMerger(matcher,"|".getBytes());
         try{
             if(LOG.isTraceEnabled()) LOG.trace("handleResult : ENTER: matcher: " + matcher);//statusList size is " + statusList.size() + " versionList size is " + versionList.size() + "gid is " + gTransId);
-            /*
+            if(startId == 0) return 1;
             if(statusList==null && versionList == null) //non-transactional data, user put it directly
             {
                  //maybe we can set a CQD for this?
                  //Now, I make this one visible.
-                return true;
+                return 1;
             }
-            */
+
             if(thisTs > startId)  //only for debug checking, like an assert
             {
                 //check whether has mt_ family , if has ,doesn't display, if not, displays
                 if(versionList==null && statusList==null){
                    if(LOG.isTraceEnabled()) LOG.trace("handleResult thisTs " + thisTs+ " > startId " + startId + ".  Assuming cell was inserted outside of SSCC and returning true");
-                   return true;
+                   return 1;
                 }
                 else {
                    if(LOG.isTraceEnabled()) LOG.trace("handleResult thisTs " + thisTs+ " > startId " + startId + ".  Cell is inserted by another transaction");
-                   return false;
+                   return -1;
                 }
             }
 
@@ -291,7 +291,7 @@ public class SsccTransactionState extends TransactionState{
                             {
                                 //In Trafodion, we have to delete the whole row, instead of individual cell
                                 if(LOG.isTraceEnabled()) LOG.trace("handleResult row is deleted by this transaction");
-                                return false;
+                                return 0;
                             }
                             if(indexOf(lv_colList,matcher) != -1) // This cell is updated by me
                             {
@@ -311,12 +311,14 @@ public class SsccTransactionState extends TransactionState{
                         {
                             boolean isit = SsccConst.isSelfUpdate(statusValList,startId);
                             if(LOG.isTraceEnabled()) LOG.trace("handleResult this is updated by me " + isit);
-                            return isit;
+                            if( isit)
+                              return 1;
+                            else return -1;
                         }
                         else
                         {
                             if(LOG.isTraceEnabled()) LOG.trace("handleResult is not update by me for this row");
-                            return false;
+                            return -1;
                         }
                     }
                     else {
@@ -330,7 +332,7 @@ public class SsccTransactionState extends TransactionState{
             }
             if(versionList == null){
                 if(LOG.isTraceEnabled()) LOG.trace("handleResult versionList is null, so return false, invisible row");
-                return false;
+                return -1;
             }
 
             // Status is empty: no active update of this row, so need to check the commit version
@@ -391,15 +393,18 @@ public class SsccTransactionState extends TransactionState{
                   if(LOG.isTraceEnabled()) LOG.trace("handleResult : this cell committed before our startId");
                }
                if(LOG.isTraceEnabled()) LOG.trace("handleResult : this cell is out of MAX_VERSION window check, returning true");
-               return true;
+               return 1;
             }
+            if( versionIsDelete  ) return 0;
+            //if( versionIsDelete && maxStartId == thisTs) return 0;
             finalret = (maxStartId == thisTs) && (versionIsDelete == false) ;
-            if(LOG.isTraceEnabled()) LOG.trace("handleResult: finally return " + finalret + " maxId is " + maxStartId + " thisTs is " + thisTs);
+              if(LOG.isTraceEnabled()) LOG.trace("handleResult: finally return " + finalret + " maxId is " + maxStartId + " thisTs is " + thisTs);
         }
         catch( Exception e) {
            LOG.error("handleResult:  get Caught exception " + e.getMessage() + ""  );
         }
-        return finalret;
+        if(finalret) return 1;
+        else return -1;
     }
 
     public synchronized void addScan(final Scan scan) {

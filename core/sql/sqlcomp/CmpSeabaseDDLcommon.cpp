@@ -5409,6 +5409,7 @@ short CmpSeabaseDDL::updateObjectRedefTime(
   if (((CmpCommon::getDefault(TRAF_STORE_OBJECT_DESC) == DF_ON) ||
        (force)) &&
       (objUID > 0) &&
+      CmpCommon::getDefault(TRAF_TRANS_TYPE) != DF_SSCC && 
       (NOT isSeabaseReservedSchema(catName, schName)) &&
       ((strcmp(objType, COM_BASE_TABLE_OBJECT_LIT) == 0) ||
        (strcmp(objType, COM_VIEW_OBJECT_LIT) == 0)))

@@ -103,6 +103,7 @@ public class HTableClient {
 	private static final int SCAN_FETCH = 3;
 	private boolean useTRex;
 	private boolean useTRexScanner;
+	private boolean useSSCC;
 	private String tableName;
         private static Connection connection;
 	private ResultScanner scanner = null;
@@ -327,7 +328,7 @@ public class HTableClient {
 	    if (logger.isDebugEnabled()) logger.debug("Enter HTableClient::init, tableName: " + tblName);
 	    this.useTRex = useTRex;
 	    tableName = tblName;
-	    
+ 
 	    if ( !this.useTRex ) {
 		this.useTRexScanner = false;
 	    }
@@ -352,6 +353,17 @@ public class HTableClient {
 		    }
 		}
 	    }
+
+	    String envset = System.getenv("TM_USE_SSCC");
+            if( envset != null)
+            {
+              if(Integer.parseInt(envset) == 1)
+              {
+                this.useSSCC = true;
+                this.useTRex = true;
+		this.useTRexScanner = true;
+              }
+            }
 
 	    table = new RMInterface(tblName, connection);
 	    if (logger.isDebugEnabled()) logger.debug("Exit HTableClient::init, useTRex: " + this.useTRex + ", useTRexScanner: "
@@ -808,7 +820,8 @@ public class HTableClient {
                                  int versions)
 	        throws IOException {
 	  if (logger.isTraceEnabled()) logger.trace("Enter startScan() " + tableName + " txid: " + transID+ " CacheBlocks: " + cacheBlocks + " numCacheRows: " + numCacheRows + " Bulkread: " + useSnapshotScan);
-
+	  logger.info("Enter startScan() " + tableName + " txid: " + transID+ " CacheBlocks: " + cacheBlocks + " numCacheRows: " + numCacheRows + " Bulkread: " + useSnapshotScan);
+          if(useSSCC) useSnapshotScan=false;
 	  Scan scan;
 
 	  if (startRow != null && startRow.toString() == "")
@@ -993,10 +1006,9 @@ public class HTableClient {
 	  } else if (samplePercent > 0.0f) {
 	    scan.setFilter(new RandomRowFilter(samplePercent));
 	  }
-
 	  if (!useSnapshotScan || transID != 0)
 	  {
-	    if (useTRexScanner && (transID != 0)) {
+	    if ((useTRexScanner && (transID != 0) ) || useSSCC) {
 	      scanner = table.getScanner(transID, scan);
 	    } else {
           scanner = table.getScanner(scan,dopParallelScanner);
@@ -1060,7 +1072,7 @@ public class HTableClient {
 			numColsInScan = 0;
 			
 		Result getResult;
-		if (useTRex && (transID != 0)) {
+		if ((useTRex && (transID != 0) ) || useSSCC ) {
 			getResult = table.get(transID, get);
 		} else {
 			getResult = table.get(get);
@@ -1113,7 +1125,7 @@ public class HTableClient {
 			numColsInScan = columns.length;
 		else
 			numColsInScan = 0;
-		if (useTRex && (transID != 0)) {
+		if ((useTRex && (transID != 0)) || useSSCC) {
 			getResultSet = batchGet(transID, listOfGets);
                         fetchType = GET_ROW; 
 		} else {
@@ -1164,7 +1176,7 @@ public class HTableClient {
 			numColsInScan = columns.length;
 		else
 			numColsInScan = 0;
-		if (useTRex && (transID != 0)) {
+		if ( (useTRex && (transID != 0)) || useSSCC ) {
 			getResultSet = batchGet(transID, listOfGets);
                         fetchType = GET_ROW; 
 		} else {

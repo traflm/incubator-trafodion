@@ -5082,7 +5082,16 @@ RelExpr * HbaseDelete::preCodeGen(Generator * generator,
 	  (generator->oltOptInfo()->multipleRowsReturned()))
 	generator->setUpdAbortOnError(TRUE);
     }
-
+    char *sscc = getenv("TM_USE_SSCC");
+    if(sscc != NULL)
+    {
+      short choicenumber=atoi(sscc);
+      if(choicenumber == 1) 
+      {
+          noDTMxn() = FALSE;
+         generator->setTransactionFlag(TRUE);
+      }
+    }
   // flag for hbase tables
   generator->setHdfsAccess(TRUE);
   
@@ -5362,6 +5371,16 @@ RelExpr * HbaseUpdate::preCodeGen(Generator * generator,
 	generator->setUpdAbortOnError(TRUE);
     }
 
+    char *sscc = getenv("TM_USE_SSCC");
+    if(sscc != NULL)
+    {
+      short choicenumber=atoi(sscc);
+      if(choicenumber == 1) 
+      {
+         noDTMxn() = FALSE;
+         generator->setTransactionFlag(TRUE);
+      }
+    }
   // flag for hbase tables
   generator->setHdfsAccess(TRUE);
   if (getTableDesc()->getNATable()->hasLobColumn())
@@ -5651,6 +5670,16 @@ RelExpr * HbaseInsert::preCodeGen(Generator * generator,
 	generator->setUpdAbortOnError(TRUE);
     }
 
+    char *sscc = getenv("TM_USE_SSCC");
+    if(sscc != NULL)
+    {
+      short choicenumber=atoi(sscc);
+      if(choicenumber == 1) 
+      {
+          noDTMxn() = FALSE;
+         generator->setTransactionFlag(TRUE);
+      }
+    }
   return this;
 }
 
@@ -11874,6 +11903,9 @@ RelExpr * HbaseAccess::preCodeGen(Generator * generator,
 {
   if (nodeIsPreCodeGenned())
     return this;
+
+  if (CmpCommon::getDefault(TRAF_TRANS_TYPE) == DF_SSCC)
+   generator->setTransactionFlag(TRUE); 
 
   const PartitioningFunction* myPartFunc = getPartFunc();
 

@@ -313,6 +313,7 @@ CoprocessorService, Coprocessor {
     long startId = request.getStartId();
 
     if (LOG.isTraceEnabled()) LOG.trace("SsccRegionEndpoint coprocessor: beginTransaction - id " + transId + ", regionName " + regionInfo.getRegionNameAsString());
+    LOG.info("SsccRegionEndpoint coprocessor: beginTransaction - id " + transId + ", regionName " + regionInfo.getRegionNameAsString());
 
     Throwable t = null;
     java.lang.String name = ((com.google.protobuf.ByteString) request.getRegionName()).toStringUtf8();
@@ -999,11 +1000,11 @@ CoprocessorService, Coprocessor {
          List<Cell> listCells = r.listCells();
          if(listCells != null) 
          {
-         for (Cell cell : listCells) {
-           d.deleteColumn(CellUtil.cloneFamily(cell),CellUtil.cloneQualifier(cell),localTransId);   //this is the cell that needs to be delete
+           for (Cell cell : listCells) {
+             d.deleteColumn(CellUtil.cloneFamily(cell),CellUtil.cloneQualifier(cell),localTransId);   //this is the cell that needs to be delete
 			}
+           m_Region.delete(d);
          }
-         m_Region.delete(d);
          //clear the status item
          Delete statusDelete = new Delete(rowkey, localTransId);
          statusDelete.deleteColumn(DtmConst.TRANSACTION_META_FAMILY , SsccConst.STATUS_COL );
@@ -1278,7 +1279,9 @@ CoprocessorService, Coprocessor {
                 if(firstCell == false) {
 
                     //long thisTs = c.getTimestamp();
-                    if (state.handleResult(c,statusResult.listCells(),verResult.listCells(),colResult.listCells(),transId) == true  || disableChecking == true)
+                    //if (state.handleResult(c,statusResult.listCells(),verResult.listCells(),colResult.listCells(),transId) == true  || disableChecking == true)
+                    int vis=state.handleResult(c,statusResult.listCells(),verResult.listCells(),colResult.listCells(),transId);
+                    if( (vis > 0) || (disableChecking == true && vis <0) )
                     {
                         byte[] keyt=CellUtil.cloneQualifier(c);
                         String keys = new String(keyt);
@@ -1792,7 +1795,9 @@ CoprocessorService, Coprocessor {
               long thisTs = kv.getTimestamp();
               //find out the startId for thisTs
               //long kvStartId = getStartIdFromTs(thisTs);
-              if (state.handleResult(kv,sl,vl,cl,transactionId) == true || disableChecking == true)
+              //if (state.handleResult(kv,sl,vl,cl,transactionId) == true || disableChecking == true)
+              int vis = state.handleResult(kv,sl,vl,cl,transactionId);
+              if (vis >0 || (disableChecking == true && vis <0) )
               {
                   byte[] keyt=CellUtil.cloneQualifier(kv);
                   String keys = new String(keyt);
@@ -1973,7 +1978,8 @@ CoprocessorService, Coprocessor {
 
     if(statusResult != null ) sl = statusResult.listCells();
     if (LOG.isTraceEnabled()) LOG.trace("SsccRegionEndpoint coprocessor: put stateless: " + stateless  );
-    if(state.hasConflict(sl,vl,stateless,startId,transactionId) == false) {
+    
+    if(state.hasConflict(sl,vl,stateless,startId,transactionId) == false || disableChecking == true) {
         state.addToPutList(rowkey);
         //update status metadata
         byte[] statusValue;
@@ -2146,7 +2152,7 @@ CoprocessorService, Coprocessor {
 
     if(statusResult != null ) sl = statusResult.listCells();
     if (LOG.isTraceEnabled()) LOG.trace("putRegionTx stateless: " + stateless);
-    if(state.hasConflict(sl,vl,stateless,startId,tid) == false) {
+    if(state.hasConflict(sl,vl,stateless,startId,tid) == false || disableChecking == true) {
         state.addToPutList(rowkey);
         //update status metadata
         byte[] statusValue;
@@ -2301,7 +2307,7 @@ CoprocessorService, Coprocessor {
     if(statusResult != null ) sl = statusResult.listCells();
 
     // All deletes are treated as stateless, so no need to retrieve the versions
-    if(state.hasConflict(sl,null,true,startId,tid) == false){
+    if(state.hasConflict(sl,null,true,startId,tid ) == false || disableChecking == true ){
        state.addToDelList(newDelete);
        /*update the status metadata*/
        Put statusPut = new Put(rowkey,startId );
@@ -2448,7 +2454,7 @@ CoprocessorService, Coprocessor {
     if(statusResult != null ) sl = statusResult.listCells();
 
     // All deletes are treated as stateless, so no need to retrieve the versions
-    if(state.hasConflict(sl,null,true,startId,transactionId) == false){
+    if(state.hasConflict(sl,null,true,startId,transactionId ) == false  || disableChecking == true ){
        state.addToDelList(newDelete);
        /*update the status metadata*/
        Put statusPut = new Put(rowkey,startId );
@@ -3767,7 +3773,9 @@ CoprocessorService, Coprocessor {
 
                  temp = ci.getValue(colFamily, qualifier, c);
                  if (temp != null) {
-                    if (state.handleResult(c,statusResult.listCells(),verResult.listCells(),colResult.listCells(),transactionId) == true || disableChecking == true ) {
+                    //if (state.handleResult(c,statusResult.listCells(),verResult.listCells(),colResult.listCells(),transactionId) == true || disableChecking == true ) {
+              int vis = state.handleResult(c,statusResult.listCells(),verResult.listCells(),colResult.listCells(),transactionId);
+              if (vis >0 || (disableChecking == true && vis <0) ) {
                        if (LOG.isTraceEnabled()) LOG.trace("SsccRegionEndpoint coprocessor: getSum adding cell: " + c.getRow());
                        sumVal = ci.add(sumVal, ci.castToReturnType(temp));
                        break;
@@ -3862,7 +3870,9 @@ CoprocessorService, Coprocessor {
               }
 
               if(firstCell == false) {
-                 if (state.handleResult(c,statusResult.listCells(),verResult.listCells(),colResult.listCells(),transactionId) == true || disableChecking == true) {
+                 //if (state.handleResult(c,statusResult.listCells(),verResult.listCells(),colResult.listCells(),transactionId) == true || disableChecking == true) {
+                 int vis= state.handleResult(c,statusResult.listCells(),verResult.listCells(),colResult.listCells(),transactionId);
+                 if( vis>0 || (vis<0 && disableChecking == true) ) {
                     if (LOG.isTraceEnabled()) LOG.trace("SsccRegionEndpoint coprocessor: getRowNum adding cell: " + c.getRow());
                     counter++;
                     break;
@@ -4263,13 +4273,12 @@ CoprocessorService, Coprocessor {
     long ssccSeqId = currentTime > logSeqId ? currentTime : logSeqId;
     nextSsccSequenceId = new AtomicLong(ssccSeqId);
     LOG.info("Generate SequenceID start from " + nextSsccSequenceId);
-
     //check region name
     String regionNameToCheck=this.regionInfo.getRegionNameAsString();
     if( regionNameToCheck.startsWith("TRAFODION._MD_.") == true )
       disableChecking = true;
-        
-
+    if( regionNameToCheck.startsWith("TRAFODION.LM6.") == true )
+      disableChecking = true;
     LOG.info("SsccRegionEndpoint coprocessor: start");
   }
 
